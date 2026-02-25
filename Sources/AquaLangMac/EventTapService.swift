@@ -22,7 +22,11 @@ final class EventTapService {
     }
 
     func start() throws {
-        let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        let mask =
+         (1 << CGEventType.keyDown.rawValue) |
+         (1 << CGEventType.keyUp.rawValue) |
+         (1 << CGEventType.flagsChanged.rawValue)
+
         let unmanagedSelf = Unmanaged.passUnretained(self)
 
         guard let tap = CGEvent.tapCreate(
@@ -54,9 +58,10 @@ final class EventTapService {
             return Unmanaged.passUnretained(event)
         }
 
-        guard type == .keyDown else {
-            return Unmanaged.passUnretained(event)
+        guard type == .keyDown || type == .flagsChanged else {
+             return Unmanaged.passUnretained(event)
         }
+
 
         if isReplaying {
             return Unmanaged.passUnretained(event)
