@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/aqualang"
+PID_FILE="$RUN_DIR/aqualang.pid"
+LOG_FILE="$RUN_DIR/aqualang.log"
+
+mkdir -p "$RUN_DIR"
+
+find_binary() {
+  local bundled="$SCRIPT_DIR/release/bin/AquaLangMac"
+  local local_build="$SCRIPT_DIR/.build/release/AquaLangMac"
+
+  if [[ -x "$bundled" ]]; then
+    echo "$bundled"
+    return
+  fi
+
+  if [[ -x "$local_build" ]]; then
+    echo "$local_build"
+    return
+  fi
+
+  return 1
+}
+
+is_running() {
+  if [[ ! -f "$PID_FILE" ]]; then
+    return 1
+  fi
+
+  local pid
+  pid="$(cat "$PID_FILE")"
+  [[ -n "$pid" ]] || return 1
+
+  if kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  rm -f "$PID_FILE"
+  return 1
+}
+
+start() {
+  if is_running; then
+    echo "AquaLang is already running (PID $(cat "$PID_FILE"))."
+    return 0
+  fi
+
+  local binary
+  if ! binary="$(find_binary)"; then
+    echo "AquaLang binary not found."
+    echo "Build/package first: swift build -c release (dev) or ./scripts/package-release.sh (distributable)."
+    exit 1
+  fi
+
+  nohup "$binary" >>"$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  sleep 0.2
+
+  if is_running; then
+    echo "AquaLang started in background (PID $(cat "$PID_FILE"))."
+  else
+    echo "Failed to start AquaLang. Check log: $LOG_FILE"
+    exit 1
+  fi
+}
+
+stop() {
+  if ! is_running; then
+    echo "AquaLang is not running."
+    return 0
+  fi
+
+  local pid
+  pid="$(cat "$PID_FILE")"
+  kill "$pid" 2>/dev/null || true
+
+  for _ in {1..20}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PID_FILE"
+      echo "AquaLang stopped."
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "AquaLang did not stop gracefully; sending SIGKILL."
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  echo "AquaLang stopped."
+}
+
+status() {
+  if is_running; then
+    echo "AquaLang is running (PID $(cat "$PID_FILE"))."
+    echo "Log file: $LOG_FILE"
+  else
+    echo "AquaLang is not running."
+    echo "Log file: $LOG_FILE"
+  fi
+}
+
+case "${1:-}" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo "Usage: $(basename "$0") {start|stop|status}"
+    exit 1
+    ;;
+esac
