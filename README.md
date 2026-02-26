@@ -27,21 +27,22 @@ A new macOS-native codebase for AquaLang behavior:
 ## Build
 
 ```bash
-cd AquaLangMacOS
+cd aqualang-macos
 swift build -c release
 ```
 
 ## Run
 
 ```bash
-cd AquaLangMacOS
+cd aqualang-macos
 swift run AquaLangMac
 ```
 
 Optional trigger override via environment variable:
 
 ```bash
-AQUALANG_TRIGGER=control swift run AquaLangMac
+AQUALANG_TRIGGER=control
+swift run AquaLangMac
 ```
 
 Supported trigger values: `shift` (default), `control`/`ctrl`, `option`/`alt`, `command`/`cmd`.
