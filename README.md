@@ -35,13 +35,42 @@ swift build -c release
 
 ```bash
 cd aqualang-macos
-swift run AquaLangMac
+./aqualang start
+./aqualang status
+./aqualang stop
+```
+
+The script starts AquaLang in the background and stores logs in:
+- `~/.local/state/aqualang/aqualang.log`
+
+If no packaged binary is found, it uses `.build/release/AquaLangMac` from a local release build.
+
+## Package for end users (no `swift run`)
+
+```bash
+cd aqualang-macos
+./scripts/package-release.sh
+```
+
+This creates:
+- `release/bin/AquaLangMac` (prebuilt executable)
+
+Distribute both:
+- `aqualang`
+- `release/`
+
+Then end users can run only:
+
+```bash
+./aqualang start
+./aqualang stop
+./aqualang status
 ```
 
 Optional trigger override via environment variable:
 
-```bash
-AQUALANG_TRIGGER=control
+```bash/zsh
+export AQUALANG_TRIGGER=control
 swift run AquaLangMac
 ```
 

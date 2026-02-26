@@ -5,6 +5,14 @@ public struct KeyStroke: Equatable, Sendable {
     public let keyCode: CGKeyCode
     public let flags: CGEventFlags
 
+    private static let ignoredNonTextKeyCodes: Set<CGKeyCode> = [
+        36, // return / enter
+        48, // tab
+        123, 124, 125, 126, // arrow keys
+        122, 120, 99, 118, 96, 97, 98, 100, 101, 109, // F1-F10
+        103, 111, 105, 107, 113, 106, 64, 79, 80, 90 // F11-F20
+    ]
+
     public init(keyCode: CGKeyCode, flags: CGEventFlags) {
         self.keyCode = keyCode
         self.flags = flags.intersection([.maskShift, .maskControl, .maskAlternate, .maskCommand])
@@ -17,6 +25,10 @@ public struct KeyStroke: Equatable, Sendable {
     public var isModifierOnly: Bool {
         ModifierTrigger.modifierKeyCodes.contains(keyCode)
     }
+
+    public var shouldIgnoreForBuffer: Bool {
+            isModifierOnly || Self.ignoredNonTextKeyCodes.contains(keyCode)
+        }
 }
 
 public enum ModifierTrigger: String, CaseIterable, Sendable {
@@ -68,7 +80,7 @@ public final class RecentKeyBuffer {
     }
 
     public func append(_ stroke: KeyStroke) {
-        guard !stroke.isModifierOnly else { return }
+        guard !stroke.shouldIgnoreForBuffer else { return }
         strokes.append(stroke)
         if strokes.count > maxSize {
             strokes.removeFirst(strokes.count - maxSize)

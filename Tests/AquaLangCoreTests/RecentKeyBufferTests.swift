@@ -21,6 +21,19 @@ final class RecentKeyBufferTests: XCTestCase {
         XCTAssertEqual(buffer.snapshot().count, 1)
     }
 
+    func testIgnoresNonTextSpecialKeys() {
+        let buffer = RecentKeyBuffer(maxSize: 50)
+        buffer.append(KeyStroke(keyCode: 36, flags: [])) // enter
+        buffer.append(KeyStroke(keyCode: 48, flags: [])) // tab
+        buffer.append(KeyStroke(keyCode: 123, flags: [])) // left arrow
+        buffer.append(KeyStroke(keyCode: 122, flags: [])) // F1
+        buffer.append(KeyStroke(keyCode: 0, flags: [])) // a
+
+        XCTAssertEqual(buffer.snapshot().map(\.keyCode), [0])
+        XCTAssertEqual(buffer.typedCharacterCount, 1)
+    }
+
+
     func testMaxSizeTrimming() {
         let buffer = RecentKeyBuffer(maxSize: 20)
         for i in 0..<30 {
