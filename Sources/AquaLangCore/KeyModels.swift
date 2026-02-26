@@ -13,6 +13,7 @@ public struct KeyStroke: Equatable, Sendable {
         103, 111, 105, 107, 113, 106, 64, 79, 80, 90 // F11-F20
     ]
 
+
     public init(keyCode: CGKeyCode, flags: CGEventFlags) {
         self.keyCode = keyCode
         self.flags = flags.intersection([.maskShift, .maskControl, .maskAlternate, .maskCommand])

@@ -89,8 +89,9 @@ If needed, manually enable it:
 - Replacement flow:
   1. Count printable text length after local backspace compensation.
   2. Emit that many backspaces.
-  3. Switch to next select-capable keyboard input source.
-  4. Replay buffered key events.
+  3. Buffer is cleared when Enter, Tab, or mouse click is detected (field-boundary safety).
+  4. Switch to next select-capable keyboard input source.
+  5. Replay buffered key events.
 
 ## Limitations / TODO
 
