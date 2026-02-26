@@ -75,7 +75,7 @@ If needed, manually enable it:
 Run tests:
 
 ```bash
-cd AquaLangMacOS
+cd aqualang-macos
 swift test
 ```
 
