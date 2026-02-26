@@ -40,6 +40,7 @@ final class EventTapService {
     private let triggerCooldownSeconds: TimeInterval = 0.75
     private let layoutSwitchVerifyRetries = 12
     private let layoutSwitchVerifyDelayUsec: useconds_t = 25_000
+    private let fieldBoundaryKeyCodes: Set<CGKeyCode> = [36, 48] // Enter, Tab
 
     init(trigger: ModifierTrigger = .shift) {
         self.triggerDetector = DoubleModifierDetector(trigger: trigger)
@@ -53,7 +54,10 @@ final class EventTapService {
         let mask =
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.keyUp.rawValue) |
-            (1 << CGEventType.flagsChanged.rawValue)
+            (1 << CGEventType.flagsChanged.rawValue) |
+            (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.rightMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue)
         let unmanagedSelf = Unmanaged.passUnretained(self)
 
         guard let tap = CGEvent.tapCreate(
@@ -86,6 +90,12 @@ final class EventTapService {
             return Unmanaged.passUnretained(event)
         }
 
+       if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            dlog("field boundary by mouse click; clearing buffer")
+            buffer.clear()
+            return Unmanaged.passUnretained(event)
+        }
+
         guard type == .keyDown || type == .flagsChanged else {
             return Unmanaged.passUnretained(event)
         }
@@ -114,6 +124,11 @@ final class EventTapService {
         }
 
         if type == .keyDown {
+           if fieldBoundaryKeyCodes.contains(keyCode) {
+                dlog("field boundary key=\(keyCode); clearing buffer")
+                buffer.clear()
+                return Unmanaged.passUnretained(event)
+            }
             let stroke = KeyStroke(keyCode: keyCode, flags: event.flags)
             buffer.append(stroke)
         }
