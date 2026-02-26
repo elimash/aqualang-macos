@@ -2,7 +2,7 @@ import Foundation
 import Carbon
 
 final class InputSourceManager {
-    private let debugEnabled = true 
+    private let debugEnabled = false 
 
     enum Error: Swift.Error {
         case currentSourceUnavailable

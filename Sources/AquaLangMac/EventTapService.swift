@@ -1,20 +1,23 @@
+// AquaLangMacOS/Sources/AquaLangMac/EventTapService.swift
 import Foundation
 import CoreGraphics
 import ApplicationServices
 import AquaLangCore
 
 final class EventTapService {
+    private let debugEnabled = false
 
-
-    private let debugTap = true
-    private func dlog(_ msg: String) {
-        if debugTap { print("[AquaTap] \(msg)") }
-    } 
+    private func dlog(_ message: String) {
+        if debugEnabled {
+            print("[AquaTap] \(message)")
+        }
+    }
 
     private let buffer = RecentKeyBuffer(maxSize: 220)
     private let triggerDetector: DoubleModifierDetector
     private let sourceManager = InputSourceManager()
     private let replayEngine = ReplayEngine()
+    private let replayEventMarker: Int64 = 0x41514C4D
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -69,8 +72,8 @@ final class EventTapService {
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-
         if type == .tapDisabledByTimeout, let eventTap {
+            dlog("tap disabled by timeout; re-enabling")
             CGEvent.tapEnable(tap: eventTap, enable: true)
             return Unmanaged.passUnretained(event)
         }
@@ -83,12 +86,18 @@ final class EventTapService {
             return Unmanaged.passUnretained(event)
         }
 
+        if event.getIntegerValueField(.eventSourceUserData) == replayEventMarker {
+            dlog("ignoring synthetic replay event (pass-through)")
+            return Unmanaged.passUnretained(event)
+        }
+
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         dlog("type=\(type.rawValue) key=\(keyCode) flags=\(event.flags.rawValue) replaying=\(isReplaying)")
 
         if type == .flagsChanged && triggerDetector.shouldTrack(keyCode: keyCode) {
             let now = CFAbsoluteTimeGetCurrent()
             if shouldTriggerOnModifierEdge(event: event, now: now) {
+                dlog("TRIGGER FIRED")
                 lastTriggerAt = now
                 triggerLanguageReplace()
                 return nil
@@ -104,51 +113,46 @@ final class EventTapService {
         return Unmanaged.passUnretained(event)
     }
 
-
-private func shouldTriggerOnModifierEdge(event: CGEvent, now: TimeInterval) -> Bool {
-
-    if (now - lastTriggerAt) < triggerCooldownSeconds {
-        return false
-    }
-
-    let triggerFlag = eventFlag(for: trigger)
-    let isPressedNow = event.flags.contains(triggerFlag)
-    dlog("edge now=\(now) lastTriggerAt=\(lastTriggerAt) lastCompletedTapAt=\(String(describing: lastCompletedTapAt)) isDown=\(isTriggerCurrentlyDown) pressedNow=\(isPressedNow)")
-
-    // Press edge
-    if isPressedNow {
-        if isTriggerCurrentlyDown {
+    private func shouldTriggerOnModifierEdge(event: CGEvent, now: TimeInterval) -> Bool {
+        if (now - lastTriggerAt) < triggerCooldownSeconds {
+            dlog("edge ignored by cooldown")
             return false
         }
-        isTriggerCurrentlyDown = true
-        return false
-    }
 
-    // Release edge
-    if !isTriggerCurrentlyDown {
-        return false
-    }
-    isTriggerCurrentlyDown = false
+        let triggerFlag = eventFlag(for: trigger)
+        let isPressedNow = event.flags.contains(triggerFlag)
+        dlog("edge now=\(now) lastTriggerAt=\(lastTriggerAt) lastCompletedTapAt=\(String(describing: lastCompletedTapAt)) isDown=\(isTriggerCurrentlyDown) pressedNow=\(isPressedNow)")
 
-    guard let previousTap = lastCompletedTapAt else {
+        // Press edge
+        if isPressedNow {
+            if isTriggerCurrentlyDown {
+                return false
+            }
+            isTriggerCurrentlyDown = true
+            return false
+        }
+
+        // Release edge
+        if !isTriggerCurrentlyDown {
+            return false
+        }
+        isTriggerCurrentlyDown = false
+
+        guard let previousTap = lastCompletedTapAt else {
+            lastCompletedTapAt = now
+            return false
+        }
+
+        let isDoubleTap = (now - previousTap) <= doubleTapThresholdSeconds
+        if isDoubleTap {
+            // consume this sequence and require a fresh pair next time
+            lastCompletedTapAt = nil
+            return true
+        }
+
         lastCompletedTapAt = now
         return false
     }
-
-    let isDoubleTap = (now - previousTap) <= doubleTapThresholdSeconds
-    if isDoubleTap {
-        // consume this sequence and require a fresh pair next time
-        lastCompletedTapAt = nil
-        dlog("TRIGGER FIRED")
-        return true
-    } else {
-        lastCompletedTapAt = now
-        return false
-    }
-}
-
-
-
 
     private func eventFlag(for trigger: ModifierTrigger) -> CGEventFlags {
         switch trigger {
@@ -163,55 +167,53 @@ private func shouldTriggerOnModifierEdge(event: CGEvent, now: TimeInterval) -> B
         }
     }
 
-private func triggerLanguageReplace() {
-    let snapshot = buffer.snapshot()
-    let characterCount = buffer.typedCharacterCount
-    guard characterCount > 0 else { return }
-
-    isReplaying = true
-    defer {
-        triggerDetector.reset()
-        buffer.clear()
-        isReplaying = false
-    }
-
-    do {
-        dlog("replace start chars=\(characterCount)")
-        let beforeID = sourceManager.currentSourceID()
-        dlog("before source=\(beforeID ?? "nil")")
-
-        let targetID = try sourceManager.switchToNextSource()
-        dlog("target source=\(targetID)")
-
-        if beforeID == targetID {
-            dlog("source did not change, aborting replay")
+    private func triggerLanguageReplace() {
+        let snapshot = buffer.snapshot()
+        let characterCount = buffer.typedCharacterCount
+        guard characterCount > 0 else {
+            dlog("replace skipped: empty buffer")
             return
         }
 
-        var verified = false
-        for _ in 0..<layoutSwitchVerifyRetries {
-            usleep(layoutSwitchVerifyDelayUsec)
-            if sourceManager.currentSourceID() == targetID {
-                verified = true
-                break
+        isReplaying = true
+        defer {
+            triggerDetector.reset()
+            buffer.clear()
+            isReplaying = false
+        }
+
+        do {
+            dlog("replace start chars=\(characterCount)")
+            let beforeID = sourceManager.currentSourceID()
+            dlog("before source=\(beforeID ?? "nil")")
+            let targetID = try sourceManager.switchToNextSource()
+            dlog("target source=\(targetID)")
+            if beforeID == targetID {
+                dlog("replace skipped: source did not change")
+                return
             }
+
+            // verify source switch before replay, similar to Windows retry/timer semantics
+            var verified = false
+            for _ in 0..<layoutSwitchVerifyRetries {
+                usleep(layoutSwitchVerifyDelayUsec)
+                if sourceManager.currentSourceID() == targetID {
+                    verified = true
+                    break
+                }
+            }
+
+            if !verified {
+                dlog("source verified=false")
+                // fallback to previous behavior timing if source id cannot be verified in time
+                usleep(80_000)
+            }
+
+            dlog("replay begin")
+            replayEngine.replaceBufferedText(with: snapshot, typedCount: characterCount, marker: replayEventMarker)
+        } catch {
+            fputs("AquaLangMac error: \(error)\n", stderr)
         }
-
-        dlog("source verified=\(verified)")
-
-        if !verified {
-            usleep(80_000)
-        }
-
-        dlog("replay begin")
-        replayEngine.replaceBufferedText(with: snapshot, typedCount: characterCount)
-    } catch {
-        fputs("AquaLangMac error: \(error)\n", stderr)
     }
-}
-
-
-
-
 }
 
