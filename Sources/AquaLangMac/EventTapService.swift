@@ -7,6 +7,13 @@ import AquaLangCore
 final class EventTapService {
     private let debugEnabled = false
 
+    private struct LastConversion {
+        let strokes: [KeyStroke]
+        let typedCount: Int
+        let sourceBeforeID: String
+        let sourceAfterID: String
+    }
+
     private func dlog(_ message: String) {
         if debugEnabled {
             print("[AquaTap] \(message)")
@@ -22,6 +29,7 @@ final class EventTapService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var isReplaying = false
+    private var lastConversion: LastConversion?
 
     // reliability guards (ported behavior intent from Windows stateful trigger handling)
     private var isTriggerCurrentlyDown = false
@@ -170,8 +178,15 @@ final class EventTapService {
     private func triggerLanguageReplace() {
         let snapshot = buffer.snapshot()
         let characterCount = buffer.typedCharacterCount
-        guard characterCount > 0 else {
-            dlog("replace skipped: empty buffer")
+
+        if characterCount == 0 {
+            guard let lastConversion else {
+                dlog("replace skipped: empty buffer and no last conversion")
+                return
+            }
+
+            dlog("empty buffer trigger: cycling last conversion")
+            cycleLastConversion(lastConversion)
             return
         }
 
@@ -211,9 +226,61 @@ final class EventTapService {
 
             dlog("replay begin")
             replayEngine.replaceBufferedText(with: snapshot, typedCount: characterCount, marker: replayEventMarker)
+
+            if let beforeID {
+                lastConversion = LastConversion(strokes: snapshot, typedCount: characterCount, sourceBeforeID: beforeID, sourceAfterID: targetID)
+            }
         } catch {
             fputs("AquaLangMac error: \(error)\n", stderr)
         }
     }
+    private func cycleLastConversion(_ conversion: LastConversion) {
+        isReplaying = true
+        defer {
+            triggerDetector.reset()
+            isReplaying = false
+        }
+
+        do {
+            dlog("cycle start chars=\(conversion.typedCount)")
+            let current = sourceManager.currentSourceID()
+            dlog("cycle current source=\(current ?? "nil") expected after=\(conversion.sourceAfterID)")
+
+            if current != conversion.sourceAfterID {
+                dlog("cycle skipped: current source is not the converted source")
+                return
+            }
+
+            let targetID = try sourceManager.switchToNextSource()
+            dlog("cycle target source=\(targetID)")
+
+            var verified = false
+            for _ in 0..<layoutSwitchVerifyRetries {
+                usleep(layoutSwitchVerifyDelayUsec)
+                if sourceManager.currentSourceID() == targetID {
+                    verified = true
+                    break
+                }
+            }
+
+            if !verified {
+                dlog("cycle source verified=false")
+                usleep(80_000)
+            }
+
+            replayEngine.replaceBufferedText(with: conversion.strokes, typedCount: conversion.typedCount, marker: replayEventMarker)
+            buffer.clear()
+            lastConversion = LastConversion(
+                strokes: conversion.strokes,
+                typedCount: conversion.typedCount,
+                sourceBeforeID: conversion.sourceBeforeID,
+                sourceAfterID: targetID
+            )
+            dlog("cycle replay done")
+        } catch {
+            fputs("AquaLangMac error: \(error)\n", stderr)
+        }
+    }
+
 }
 

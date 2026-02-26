@@ -1,3 +1,4 @@
+// AquaLangMacOS/Sources/AquaLangMac/InputSourceManager.swift
 import Foundation
 import Carbon
 
@@ -8,6 +9,7 @@ final class InputSourceManager {
         case currentSourceUnavailable
         case noAlternatives
         case selectFailed
+        case sourceNotFound
         case targetIdUnavailable
     }
 
@@ -102,6 +104,37 @@ final class InputSourceManager {
 
         if debugEnabled {
             print("[AquaTap] target source=\(targetIDString)")
+        }
+
+        return targetIDString
+    }
+
+    @discardableResult
+    func switchToSource(id sourceID: String) throws -> String {
+        let properties = [kTISPropertyInputSourceID: sourceID as CFString] as CFDictionary
+        guard
+            let matches = TISCreateInputSourceList(properties, false)?.takeRetainedValue() as? [TISInputSource],
+            let target = matches.first
+        else {
+            throw Error.sourceNotFound
+        }
+
+        let status = TISSelectInputSource(target)
+        guard status == noErr else {
+            throw Error.selectFailed
+        }
+
+        guard let targetIDPtr = TISGetInputSourceProperty(target, kTISPropertyInputSourceID) else {
+            throw Error.targetIdUnavailable
+        }
+
+        let targetID = Unmanaged<CFTypeRef>.fromOpaque(targetIDPtr).takeUnretainedValue()
+        guard let targetIDString = targetID as? String else {
+            throw Error.targetIdUnavailable
+        }
+
+        if debugEnabled {
+            print("[AquaTap] switched directly to source=\(targetIDString)")
         }
 
         return targetIDString
