@@ -187,6 +187,8 @@ final class EventTapService {
             return .maskAlternate
         case .command:
             return .maskCommand
+        case .function:
+            return .maskSecondaryFn
         }
     }
 

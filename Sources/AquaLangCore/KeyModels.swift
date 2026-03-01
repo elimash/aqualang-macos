@@ -37,6 +37,7 @@ public enum ModifierTrigger: String, CaseIterable, Sendable {
     case control
     case option
     case command
+    case function
 
     public var keyCodes: Set<CGKeyCode> {
         switch self {
@@ -48,6 +49,8 @@ public enum ModifierTrigger: String, CaseIterable, Sendable {
             return [58, 61] // left/right Option
         case .command:
             return [55, 54] // left/right Command
+        case .function:
+            return [63] // Fn (Globe)
         }
     }
 
@@ -56,7 +59,7 @@ public enum ModifierTrigger: String, CaseIterable, Sendable {
     }
 
     public static func parse(_ value: String?) -> ModifierTrigger {
-        guard let value else { return .shift }
+        guard let value else { return .control }
         switch value.lowercased() {
         case "shift":
             return .shift
@@ -66,8 +69,10 @@ public enum ModifierTrigger: String, CaseIterable, Sendable {
             return .option
         case "cmd", "command":
             return .command
+        case "fn", "function", "globe":
+            return .function
         default:
-            return .shift
+            return .control
         }
     }
 }
