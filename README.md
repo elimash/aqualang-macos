@@ -12,6 +12,22 @@ A new macOS-native codebase for AquaLang behavior:
 > - This is designed for bilingual workflow (e.g., English/Hebrew).
 > - No keystroke log file is written; the buffer is memory-only and is cleared after replacement.
 
+## Copyright (C) 2026 Eliyahu Mashiah.
+
+This project is dual-licensed:
+
+1. For individuals, GNU Affero General Public License v3.0 (AGPLv3)
+   You may use, modify, and distribute this software under the terms of the AGPLv3.
+   See the LICENSE file for details.
+
+2. Commercial License
+   Organizations that cannot comply with the AGPLv3 (for example,
+   those distributing proprietary derivative works or offering
+   the software as part of a closed-source SaaS product) must
+   obtain a commercial license from Eliyahu Mashiah.
+
+For commercial licensing inquiries, please contact: aqualang.soft@gmail.com
+
 ## Tech stack
 
 - Swift 5.9+
