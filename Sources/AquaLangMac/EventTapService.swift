@@ -36,11 +36,18 @@ final class EventTapService {
     private var lastCompletedTapAt: TimeInterval?
     private var lastTriggerAt: TimeInterval = 0
 
+    // deferred-clear: set on Enter/Tab/Fn-keys; executed on next regular keystroke
+    private var pendingBoundaryClear = false
+
     private let doubleTapThresholdSeconds: TimeInterval = 0.42
     private let triggerCooldownSeconds: TimeInterval = 0.75
     private let layoutSwitchVerifyRetries = 12
     private let layoutSwitchVerifyDelayUsec: useconds_t = 25_000
-    private let fieldBoundaryKeyCodes: Set<CGKeyCode> = [36, 48] // Enter, Tab
+    private let deferredBoundaryKeyCodes: Set<CGKeyCode> = [
+        36, 48,                                              // Enter, Tab
+        122, 120, 99, 118, 96, 97, 98, 100, 101, 109,       // F1–F10
+        103, 111, 105, 107, 113, 106, 64, 79, 80, 90        // F11–F20
+    ]
 
     init(trigger: ModifierTrigger = .shift) {
         self.triggerDetector = DoubleModifierDetector(trigger: trigger)
@@ -93,6 +100,7 @@ final class EventTapService {
        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             dlog("field boundary by mouse click; clearing buffer")
             buffer.clear()
+            pendingBoundaryClear = false
             return Unmanaged.passUnretained(event)
         }
 
@@ -117,6 +125,7 @@ final class EventTapService {
             if shouldTriggerOnModifierEdge(event: event, now: now) {
                 dlog("TRIGGER FIRED")
                 lastTriggerAt = now
+                pendingBoundaryClear = false
                 triggerLanguageReplace()
                 return nil
             }
@@ -124,10 +133,15 @@ final class EventTapService {
         }
 
         if type == .keyDown {
-           if fieldBoundaryKeyCodes.contains(keyCode) {
-                dlog("field boundary key=\(keyCode); clearing buffer")
-                buffer.clear()
+            if deferredBoundaryKeyCodes.contains(keyCode) {
+                dlog("field boundary key=\(keyCode); deferred clear pending")
+                pendingBoundaryClear = true
                 return Unmanaged.passUnretained(event)
+            }
+            if pendingBoundaryClear {
+                dlog("new typing after boundary; clearing buffer")
+                buffer.clear()
+                pendingBoundaryClear = false
             }
             let stroke = KeyStroke(keyCode: keyCode, flags: event.flags)
             buffer.append(stroke)
